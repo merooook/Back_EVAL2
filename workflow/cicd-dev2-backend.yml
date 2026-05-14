@@ -1,0 +1,47 @@
+name: CI/CD Backend
+
+on:
+  push:
+    branches:
+      - "main"
+      - "backend/**"
+
+jobs:
+  build-push-deploy-backend:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Configurar credenciales AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login a Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build imagen backend y push imagen a ECR
+        run: |
+          cd backend
+          docker build -t backend .
+          docker tag backend ${{ secrets.ECR_REPO_URL_BACKEND }}:latest
+          docker push ${{ secrets.ECR_REPO_URL_BACKEND }}:latest    
+
+      - name: Deploy en EC2
+        uses: appleboy/ssh-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.ECR_REPO_URL_BACKEND }}
+            docker pull ${{ secrets.ECR_REPO_URL_BACKEND }}:latest
+            docker stop backend || true
+            docker rm backend || true
+            docker run -d --name backend -p 80:3000 ${{ secrets.ECR_REPO_URL_BACKEND }}:latest
+
