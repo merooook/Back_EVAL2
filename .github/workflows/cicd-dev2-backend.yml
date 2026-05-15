@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - "deploy"
-      # - "backend/**"
 
 jobs:
   build-push-deploy-backend:
